@@ -9,6 +9,7 @@ using RabbitMQExamplesWeb.Watermark.Models;
 
 namespace RabbitMQExamplesWeb.Watermark.Controllers
 {
+    //test
     public class ProductsController : Controller
     {
         private readonly AppDbContext _context;
