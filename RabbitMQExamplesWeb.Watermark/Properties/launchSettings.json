@@ -18,7 +18,7 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "https": {
+    "RabbitMQExamplesWeb.Watermark": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,

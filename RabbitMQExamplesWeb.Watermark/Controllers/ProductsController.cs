@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Rendering;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RabbitMQExamplesWeb.Watermark.Models;
 using RabbitMQExamplesWeb.Watermark.Services;
@@ -14,12 +9,14 @@ namespace RabbitMQExamplesWeb.Watermark.Controllers
     public class ProductsController : Controller
     {
         private readonly AppDbContext _context;
-        private readonly RabbitMQPublisher _rabbitMQPublisher;
+		private readonly RabbitMQPublisher _rabbitMQPublisher;
 
-        public ProductsController(AppDbContext context)
+		public ProductsController(AppDbContext context, 
+            RabbitMQPublisher rabbitMQPublisher)
         {
             _context = context;
-        }
+			_rabbitMQPublisher = rabbitMQPublisher;
+		}
 
         // GET: Products
         public async Task<IActionResult> Index()
@@ -56,42 +53,31 @@ namespace RabbitMQExamplesWeb.Watermark.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([Bind("Id,Name,Price,Stock,ImageName")] Product product, IFormFile ImageName)
-        {
-            if (!ModelState.IsValid) return View(product);
+		public async Task<IActionResult> Create([Bind("Id,Name,Price,Stock,ImageName")] Product product, IFormFile ImageFile)
+		{
+			// Uncomment the following line if you want to validate the model state
+			// if (!ModelState.IsValid) return View(product);
 
+			if (ImageFile is { Length: > 0 })
+			{
+				var randomImageName = Guid.NewGuid() + Path.GetExtension(ImageFile.FileName);
+				var path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/images", randomImageName);
 
-            if (ImageName is { Length: > 0 })
-            {
-                var randomImageName = Guid.NewGuid() + Path.GetExtension(ImageName.FileName);
+				await using FileStream stream = new(path, FileMode.Create);
+				await ImageFile.CopyToAsync(stream);
 
+				_rabbitMQPublisher.Publish(new productImageCreatedEvent() { ImageName = randomImageName });
 
-                var path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/images", randomImageName);
+				product.ImageName = randomImageName;
+			}
 
+			_context.Add(product);
+			await _context.SaveChangesAsync();
+			return RedirectToAction(nameof(Index));
+		}
 
-                await using FileStream stream = new(path, FileMode.Create);
-
-
-                await ImageName.CopyToAsync(stream);
-
-
-                _rabbitMQPublisher.Publish(new productImageCreatedEvent() { ImageName = randomImageName });
-
-                product.ImageName = randomImageName;
-            }
-
-
-
-
-            _context.Add(product);
-            await _context.SaveChangesAsync();
-            return RedirectToAction(nameof(Index));
-
-            return View(product);
-        }
-
-        // GET: Products/Edit/5
-        public async Task<IActionResult> Edit(int? id)
+		// GET: Products/Edit/5
+		public async Task<IActionResult> Edit(int? id)
         {
             if (id == null)
             {
@@ -111,7 +97,7 @@ namespace RabbitMQExamplesWeb.Watermark.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, [Bind("Id,Name,Price,Stock,ImageName")] Product product)
+        public async Task<IActionResult> Edit(int id, [Bind("Id,Name,Price,Stock,PictureUrl")] Product product)
         {
             if (id != product.Id)
             {
