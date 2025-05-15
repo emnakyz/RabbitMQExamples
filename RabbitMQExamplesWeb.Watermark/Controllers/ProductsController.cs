@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using RabbitMQExamplesWeb.Watermark.Models;
+using RabbitMQExamplesWeb.Watermark.Services;
 
 namespace RabbitMQExamplesWeb.Watermark.Controllers
 {
@@ -13,6 +14,7 @@ namespace RabbitMQExamplesWeb.Watermark.Controllers
     public class ProductsController : Controller
     {
         private readonly AppDbContext _context;
+        private readonly RabbitMQPublisher _rabbitMQPublisher;
 
         public ProductsController(AppDbContext context)
         {
@@ -54,14 +56,37 @@ namespace RabbitMQExamplesWeb.Watermark.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([Bind("Id,Name,Price,Stock,PictureUrl")] Product product)
+        public async Task<IActionResult> Create([Bind("Id,Name,Price,Stock,ImageName")] Product product, IFormFile ImageName)
         {
-            if (ModelState.IsValid)
+            if (!ModelState.IsValid) return View(product);
+
+
+            if (ImageName is { Length: > 0 })
             {
-                _context.Add(product);
-                await _context.SaveChangesAsync();
-                return RedirectToAction(nameof(Index));
+                var randomImageName = Guid.NewGuid() + Path.GetExtension(ImageName.FileName);
+
+
+                var path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/images", randomImageName);
+
+
+                await using FileStream stream = new(path, FileMode.Create);
+
+
+                await ImageName.CopyToAsync(stream);
+
+
+                _rabbitMQPublisher.Publish(new productImageCreatedEvent() { ImageName = randomImageName });
+
+                product.ImageName = randomImageName;
             }
+
+
+
+
+            _context.Add(product);
+            await _context.SaveChangesAsync();
+            return RedirectToAction(nameof(Index));
+
             return View(product);
         }
 
@@ -86,7 +111,7 @@ namespace RabbitMQExamplesWeb.Watermark.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, [Bind("Id,Name,Price,Stock,PictureUrl")] Product product)
+        public async Task<IActionResult> Edit(int id, [Bind("Id,Name,Price,Stock,ImageName")] Product product)
         {
             if (id != product.Id)
             {
